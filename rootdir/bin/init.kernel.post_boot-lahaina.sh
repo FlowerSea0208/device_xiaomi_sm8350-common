@@ -1,5 +1,5 @@
 #=============================================================================
-# Copyright (c) 2020 Qualcomm Technologies, Inc.
+# Copyright (c) 2020-2021 Qualcomm Technologies, Inc.
 # All Rights Reserved.
 # Confidential and Proprietary - Qualcomm Technologies, Inc.
 #
@@ -31,85 +31,86 @@
 #=============================================================================
 
 function configure_zram_parameters() {
-	MemTotalStr=`cat /proc/meminfo | grep MemTotal`
-	MemTotal=${MemTotalStr:16:8}
+        MemTotalStr=`cat /proc/meminfo | grep MemTotal`
+        MemTotal=${MemTotalStr:16:8}
 
-	# Zram disk - 75% for Go and < 2GB devices .
-	# For >2GB Non-Go devices, size = 50% of RAM size. Limit the size to 4GB.
-	# And enable lz4 zram compression for Go targets.
+        # Zram disk - 75% for Go and < 2GB devices .
+        # For >2GB Non-Go devices, size = 50% of RAM size. Limit the size to 4GB.
+        # And enable lz4 zram compression for Go targets.
 
-	let RamSizeGB="( $MemTotal / 1048576 ) + 1"
-	diskSizeUnit=M
-	if [ $RamSizeGB -le 2 ]; then
-		let zRamSizeMB="( $RamSizeGB * 1024 ) * 3 / 4"
-	else
-		let zRamSizeMB="( $RamSizeGB * 1024 ) / 2"
-	fi
+        let RamSizeGB="( $MemTotal / 1048576 ) + 1"
+        diskSizeUnit=M
+        if [ $RamSizeGB -le 2 ]; then
+                let zRamSizeMB="( $RamSizeGB * 1024 ) * 3 / 4"
+        else
+                let zRamSizeMB="( $RamSizeGB * 1024 ) / 2"
+        fi
 
-	# use MB avoid 32 bit overflow
-	if [ $zRamSizeMB -gt 4096 ]; then
-		let zRamSizeMB=4096
-	fi
+        # use MB avoid 32 bit overflow
+        if [ $zRamSizeMB -gt 4096 ]; then
+                let zRamSizeMB=4096
+        fi
 
-	echo lz4 > /sys/block/zram0/comp_algorithm
+        echo lz4 > /sys/block/zram0/comp_algorithm
 
-	if [ -f /sys/block/zram0/disksize ]; then
-		if [ -f /sys/block/zram0/use_dedup ]; then
-			echo 1 > /sys/block/zram0/use_dedup
-		fi
-		echo "$zRamSizeMB""$diskSizeUnit" > /sys/block/zram0/disksize
+        if [ -f /sys/block/zram0/disksize ]; then
+                if [ -f /sys/block/zram0/use_dedup ]; then
+                        echo 1 > /sys/block/zram0/use_dedup
+                fi
+                echo "$zRamSizeMB""$diskSizeUnit" > /sys/block/zram0/disksize
 
-		# ZRAM may use more memory than it saves if SLAB_STORE_USER
-		# debug option is enabled.
-		if [ -e /sys/kernel/slab/zs_handle ]; then
-			echo 0 > /sys/kernel/slab/zs_handle/store_user
-		fi
-		if [ -e /sys/kernel/slab/zspage ]; then
-			echo 0 > /sys/kernel/slab/zspage/store_user
-		fi
+                # ZRAM may use more memory than it saves if SLAB_STORE_USER
+                # debug option is enabled.
+                if [ -e /sys/kernel/slab/zs_handle ]; then
+                        echo 0 > /sys/kernel/slab/zs_handle/store_user
+                fi
+                if [ -e /sys/kernel/slab/zspage ]; then
+                        echo 0 > /sys/kernel/slab/zspage/store_user
+                fi
 
-		mkswap /dev/block/zram0
-		swapon /dev/block/zram0 -p 32758
-	fi
+                mkswap /dev/block/zram0
+                swapon /dev/block/zram0 -p 32758
+        fi
 }
 
 function configure_memory_parameters() {
-	# Set Memory parameters.
-	#
-	# Set per_process_reclaim tuning parameters
-	# All targets will use vmpressure range 50-70,
-	# All targets will use 512 pages swap size.
-	#
-	# Set Low memory killer minfree parameters
-	# 32 bit Non-Go, all memory configurations will use 15K series
-	# 32 bit Go, all memory configurations will use uLMK + Memcg
-	# 64 bit will use Google default LMK series.
-	#
-	# Set ALMK parameters (usually above the highest minfree values)
-	# vmpressure_file_min threshold is always set slightly higher
-	# than LMK minfree's last bin value for all targets. It is calculated as
-	# vmpressure_file_min = (last bin - second last bin ) + last bin
-	#
-	# Set allocstall_threshold to 0 for all targets.
-	#
+        # Set Memory parameters.
+        #
+        # Set per_process_reclaim tuning parameters
+        # All targets will use vmpressure range 50-70,
+        # All targets will use 512 pages swap size.
+        #
+        # Set Low memory killer minfree parameters
+        # 32 bit Non-Go, all memory configurations will use 15K series
+        # 32 bit Go, all memory configurations will use uLMK + Memcg
+        # 64 bit will use Google default LMK series.
+        #
+        # Set ALMK parameters (usually above the highest minfree values)
+        # vmpressure_file_min threshold is always set slightly higher
+        # than LMK minfree's last bin value for all targets. It is calculated as
+        # vmpressure_file_min = (last bin - second last bin ) + last bin
+        #
+        # Set allocstall_threshold to 0 for all targets.
+        #
 
-	configure_zram_parameters
-	echo 0 > /proc/sys/vm/page-cluster
-	echo 100 > /proc/sys/vm/swappiness
-	echo 1 > /proc/sys/vm/watermark_scale_factor
-	echo 0 > /proc/sys/vm/watermark_boost_factor
+        configure_zram_parameters
+        echo 100 > /proc/sys/vm/swappiness
+        echo 1 > /proc/sys/vm/watermark_scale_factor
 
-	# add memory limit to camera cgroup
-	MemTotalStr=`cat /proc/meminfo | grep MemTotal`
-	MemTotal=${MemTotalStr:16:8}
+        # add memory limit to camera cgroup
+        MemTotalStr=`cat /proc/meminfo | grep MemTotal`
+        MemTotal=${MemTotalStr:16:8}
 
-	if [ $MemTotal -gt 8388608 ]; then
-		let LimitSize=838860800
-	else
-		let LimitSize=524288000
-	fi
+        if [ $MemTotal -gt 8388608 ]; then
+                let LimitSize=838860800
+        else
+                let LimitSize=524288000
+        fi
 
-	echo $LimitSize > /dev/memcg/camera/memory.soft_limit_in_bytes
+        echo $LimitSize > /dev/memcg/camera/provider/memory.soft_limit_in_bytes
+        if [ $MemTotal -le 8388608 ]; then
+                echo 0 > /proc/sys/vm/watermark_boost_factor
+        fi
 }
 
 rev=`cat /sys/devices/soc0/revision`
@@ -172,23 +173,23 @@ echo "schedutil" > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
 echo 0 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/down_rate_limit_us
 echo 0 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/up_rate_limit_us
 if [ $rev == "1.0" ]; then
-	echo 1190400 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/hispeed_freq
+        echo 1190400 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/hispeed_freq
 else
-	echo 1209600 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/hispeed_freq
+        echo 1209600 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/hispeed_freq
 fi
 echo 691200 > /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq
 echo 1 > /sys/devices/system/cpu/cpufreq/policy0/schedutil/pl
 
 # configure input boost settings
 if [ $rev == "1.0" ]; then
-	echo "0:1382800" > /sys/devices/system/cpu/cpu_boost/input_boost_freq
+        echo "0:1382800" > /sys/devices/system/cpu/cpu_boost/input_boost_freq
 else
-	echo "0:1305600" > /sys/devices/system/cpu/cpu_boost/input_boost_freq
+        echo "0:1305600" > /sys/devices/system/cpu/cpu_boost/input_boost_freq
 fi
 echo 120 > /sys/devices/system/cpu/cpu_boost/input_boost_ms
 
 # configure powerkey boost settings
-echo "0:0 1:0 2:0 3:0 4:2016000 5:0 6:0 7:0" > /sys/devices/system/cpu/cpu_boost/powerkey_input_boost_freq
+echo "0:1804800 1:0 2:0 3:0 4:2419200 5:0 6:0 7:2841600" > /sys/devices/system/cpu/cpu_boost/powerkey_input_boost_freq
 echo 400 > /sys/devices/system/cpu/cpu_boost/powerkey_input_boost_ms
 
 # configure governor settings for gold cluster
@@ -196,9 +197,9 @@ echo "schedutil" > /sys/devices/system/cpu/cpufreq/policy4/scaling_governor
 echo 0 > /sys/devices/system/cpu/cpufreq/policy4/schedutil/down_rate_limit_us
 echo 0 > /sys/devices/system/cpu/cpufreq/policy4/schedutil/up_rate_limit_us
 if [ $rev == "1.0" ]; then
-	echo 1497600 > /sys/devices/system/cpu/cpufreq/policy4/schedutil/hispeed_freq
+        echo 1497600 > /sys/devices/system/cpu/cpufreq/policy4/schedutil/hispeed_freq
 else
-	echo 1555200 > /sys/devices/system/cpu/cpufreq/policy4/schedutil/hispeed_freq
+        echo 1555200 > /sys/devices/system/cpu/cpufreq/policy4/schedutil/hispeed_freq
 fi
 echo 1 > /sys/devices/system/cpu/cpufreq/policy4/schedutil/pl
 
@@ -207,137 +208,137 @@ echo "schedutil" > /sys/devices/system/cpu/cpufreq/policy7/scaling_governor
 echo 0 > /sys/devices/system/cpu/cpufreq/policy7/schedutil/down_rate_limit_us
 echo 0 > /sys/devices/system/cpu/cpufreq/policy7/schedutil/up_rate_limit_us
 if [ $rev == "1.0" ]; then
-	echo 1536000 > /sys/devices/system/cpu/cpufreq/policy7/schedutil/hispeed_freq
+        echo 1536000 > /sys/devices/system/cpu/cpufreq/policy7/schedutil/hispeed_freq
 else
-	echo 1670400 > /sys/devices/system/cpu/cpufreq/policy7/schedutil/hispeed_freq
+        echo 1670400 > /sys/devices/system/cpu/cpufreq/policy7/schedutil/hispeed_freq
 fi
 echo 1 > /sys/devices/system/cpu/cpufreq/policy7/schedutil/pl
 
 # configure bus-dcvs
 for device in /sys/devices/platform/soc
 do
-	for cpubw in $device/*cpu-cpu-llcc-bw/devfreq/*cpu-cpu-llcc-bw
-	do
-		cat $cpubw/available_frequencies | cut -d " " -f 1 > $cpubw/min_freq
-		echo "4577 7110 9155 12298 14236 15258" > $cpubw/bw_hwmon/mbps_zones
-		echo 4 > $cpubw/bw_hwmon/sample_ms
-		echo 80 > $cpubw/bw_hwmon/io_percent
-		echo 20 > $cpubw/bw_hwmon/hist_memory
-		echo 10 > $cpubw/bw_hwmon/hyst_length
-		echo 30 > $cpubw/bw_hwmon/down_thres
-		echo 0 > $cpubw/bw_hwmon/guard_band_mbps
-		echo 250 > $cpubw/bw_hwmon/up_scale
-		echo 1600 > $cpubw/bw_hwmon/idle_mbps
-		echo 12298 > $cpubw/max_freq
-		echo 40 > $cpubw/polling_interval
-	done
+        for cpubw in $device/*cpu-cpu-llcc-bw/devfreq/*cpu-cpu-llcc-bw
+        do
+                cat $cpubw/available_frequencies | cut -d " " -f 1 > $cpubw/min_freq
+                echo "4577 7110 9155 12298 14236 15258" > $cpubw/bw_hwmon/mbps_zones
+                echo 4 > $cpubw/bw_hwmon/sample_ms
+                echo 80 > $cpubw/bw_hwmon/io_percent
+                echo 20 > $cpubw/bw_hwmon/hist_memory
+                echo 10 > $cpubw/bw_hwmon/hyst_length
+                echo 30 > $cpubw/bw_hwmon/down_thres
+                echo 0 > $cpubw/bw_hwmon/guard_band_mbps
+                echo 250 > $cpubw/bw_hwmon/up_scale
+                echo 1600 > $cpubw/bw_hwmon/idle_mbps
+                echo 12298 > $cpubw/max_freq
+                echo 40 > $cpubw/polling_interval
+        done
 
-	for llccbw in $device/*cpu-llcc-ddr-bw/devfreq/*cpu-llcc-ddr-bw
-	do
-		cat $llccbw/available_frequencies | cut -d " " -f 1 > $llccbw/min_freq
-		if [ ${ddr_type:4:2} == $ddr_type4 ]; then
-			echo "1720 2086 2929 3879 5931 6515 8136" > $llccbw/bw_hwmon/mbps_zones
-		elif [ ${ddr_type:4:2} == $ddr_type5 ]; then
-			echo "1720 2086 2929 3879 6515 7980 12191" > $llccbw/bw_hwmon/mbps_zones
-		fi
-		echo 4 > $llccbw/bw_hwmon/sample_ms
-		echo 80 > $llccbw/bw_hwmon/io_percent
-		echo 20 > $llccbw/bw_hwmon/hist_memory
-		echo 10 > $llccbw/bw_hwmon/hyst_length
-		echo 30 > $llccbw/bw_hwmon/down_thres
-		echo 0 > $llccbw/bw_hwmon/guard_band_mbps
-		echo 250 > $llccbw/bw_hwmon/up_scale
-		echo 1600 > $llccbw/bw_hwmon/idle_mbps
-		echo 6515 > $llccbw/max_freq
-		echo 40 > $llccbw/polling_interval
-	done
+        for llccbw in $device/*cpu-llcc-ddr-bw/devfreq/*cpu-llcc-ddr-bw
+        do
+                cat $llccbw/available_frequencies | cut -d " " -f 1 > $llccbw/min_freq
+                if [ ${ddr_type:4:2} == $ddr_type4 ]; then
+                        echo "1720 2086 2929 3879 5931 6515 8136" > $llccbw/bw_hwmon/mbps_zones
+                elif [ ${ddr_type:4:2} == $ddr_type5 ]; then
+                        echo "1720 2086 2929 3879 6515 7980 12191" > $llccbw/bw_hwmon/mbps_zones
+                fi
+                echo 4 > $llccbw/bw_hwmon/sample_ms
+                echo 80 > $llccbw/bw_hwmon/io_percent
+                echo 20 > $llccbw/bw_hwmon/hist_memory
+                echo 10 > $llccbw/bw_hwmon/hyst_length
+                echo 30 > $llccbw/bw_hwmon/down_thres
+                echo 0 > $llccbw/bw_hwmon/guard_band_mbps
+                echo 250 > $llccbw/bw_hwmon/up_scale
+                echo 1600 > $llccbw/bw_hwmon/idle_mbps
+                echo 6515 > $llccbw/max_freq
+                echo 40 > $llccbw/polling_interval
+        done
 
-	for l3bw in $device/*snoop-l3-bw/devfreq/*snoop-l3-bw
-	do
-		cat $l3bw/available_frequencies | cut -d " " -f 1 > $l3bw/min_freq
-		echo 4 > $l3bw/bw_hwmon/sample_ms
-		echo 10 > $l3bw/bw_hwmon/io_percent
-		echo 20 > $l3bw/bw_hwmon/hist_memory
-		echo 10 > $l3bw/bw_hwmon/hyst_length
-		echo 0 > $l3bw/bw_hwmon/down_thres
-		echo 0 > $l3bw/bw_hwmon/guard_band_mbps
-		echo 0 > $l3bw/bw_hwmon/up_scale
-		echo 1600 > $l3bw/bw_hwmon/idle_mbps
-		echo 9155 > $l3bw/max_freq
-		echo 40 > $l3bw/polling_interval
-	done
+        for l3bw in $device/*snoop-l3-bw/devfreq/*snoop-l3-bw
+        do
+                cat $l3bw/available_frequencies | cut -d " " -f 1 > $l3bw/min_freq
+                echo 4 > $l3bw/bw_hwmon/sample_ms
+                echo 10 > $l3bw/bw_hwmon/io_percent
+                echo 20 > $l3bw/bw_hwmon/hist_memory
+                echo 10 > $l3bw/bw_hwmon/hyst_length
+                echo 0 > $l3bw/bw_hwmon/down_thres
+                echo 0 > $l3bw/bw_hwmon/guard_band_mbps
+                echo 0 > $l3bw/bw_hwmon/up_scale
+                echo 1600 > $l3bw/bw_hwmon/idle_mbps
+                echo 9155 > $l3bw/max_freq
+                echo 40 > $l3bw/polling_interval
+        done
 
-	# configure mem_latency settings for LLCC and DDR scaling and qoslat
-	for memlat in $device/*lat/devfreq/*lat
-	do
-		cat $memlat/available_frequencies | cut -d " " -f 1 > $memlat/min_freq
-		echo 8 > $memlat/polling_interval
-		echo 400 > $memlat/mem_latency/ratio_ceil
-	done
+        # configure mem_latency settings for LLCC and DDR scaling and qoslat
+        for memlat in $device/*lat/devfreq/*lat
+        do
+                cat $memlat/available_frequencies | cut -d " " -f 1 > $memlat/min_freq
+                echo 8 > $memlat/polling_interval
+                echo 400 > $memlat/mem_latency/ratio_ceil
+        done
 
-	# configure compute settings for gold latfloor
-	for latfloor in $device/*cpu4-cpu*latfloor/devfreq/*cpu4-cpu*latfloor
-	do
-		cat $latfloor/available_frequencies | cut -d " " -f 1 > $latfloor/min_freq
-		echo 8 > $latfloor/polling_interval
-	done
+        # configure compute settings for gold latfloor
+        for latfloor in $device/*cpu4-cpu*latfloor/devfreq/*cpu4-cpu*latfloor
+        do
+                cat $latfloor/available_frequencies | cut -d " " -f 1 > $latfloor/min_freq
+                echo 8 > $latfloor/polling_interval
+        done
 
-	# configure mem_latency settings for prime latfloor
-	for latfloor in $device/*cpu7-cpu*latfloor/devfreq/*cpu7-cpu*latfloor
-	do
-		cat $latfloor/available_frequencies | cut -d " " -f 1 > $latfloor/min_freq
-		echo 8 > $latfloor/polling_interval
-		echo 25000 > $latfloor/mem_latency/ratio_ceil
-	done
+        # configure mem_latency settings for prime latfloor
+        for latfloor in $device/*cpu7-cpu*latfloor/devfreq/*cpu7-cpu*latfloor
+        do
+                cat $latfloor/available_frequencies | cut -d " " -f 1 > $latfloor/min_freq
+                echo 8 > $latfloor/polling_interval
+                echo 25000 > $latfloor/mem_latency/ratio_ceil
+        done
 
-	# CPU4 L3 ratio ceil
-	for l3gold in $device/*cpu4-cpu-l3-lat/devfreq/*cpu4-cpu-l3-lat
-	do
-		echo 4000 > $l3gold/mem_latency/ratio_ceil
-	done
+        # CPU4 L3 ratio ceil
+        for l3gold in $device/*cpu4-cpu-l3-lat/devfreq/*cpu4-cpu-l3-lat
+        do
+                echo 4000 > $l3gold/mem_latency/ratio_ceil
+        done
 
-	# CPU5 L3 ratio ceil
-	for l3gold in $device/*cpu5-cpu-l3-lat/devfreq/*cpu5-cpu-l3-lat
-	do
-		echo 4000 > $l3gold/mem_latency/ratio_ceil
-	done
+        # CPU5 L3 ratio ceil
+        for l3gold in $device/*cpu5-cpu-l3-lat/devfreq/*cpu5-cpu-l3-lat
+        do
+                echo 4000 > $l3gold/mem_latency/ratio_ceil
+        done
 
-	# CPU6 L3 ratio ceil
-	for l3gold in $device/*cpu6-cpu-l3-lat/devfreq/*cpu6-cpu-l3-lat
-	do
-		echo 4000 > $l3gold/mem_latency/ratio_ceil
-	done
+        # CPU6 L3 ratio ceil
+        for l3gold in $device/*cpu6-cpu-l3-lat/devfreq/*cpu6-cpu-l3-lat
+        do
+                echo 4000 > $l3gold/mem_latency/ratio_ceil
+        done
 
-	# prime L3 ratio ceil
-	for l3prime in $device/*cpu7-cpu-l3-lat/devfreq/*cpu7-cpu-l3-lat
-	do
-	    echo 20000 > $l3prime/mem_latency/ratio_ceil
-	done
+        # prime L3 ratio ceil
+        for l3prime in $device/*cpu7-cpu-l3-lat/devfreq/*cpu7-cpu-l3-lat
+        do
+            echo 20000 > $l3prime/mem_latency/ratio_ceil
+        done
 
-	# qoslat ratio ceil
-	for qoslat in $device/*qoslat/devfreq/*qoslat
-	do
-	    echo 50 > $qoslat/mem_latency/ratio_ceil
-	done
+        # qoslat ratio ceil
+        for qoslat in $device/*qoslat/devfreq/*qoslat
+        do
+            echo 50 > $qoslat/mem_latency/ratio_ceil
+        done
 done
-
 echo deep > /sys/power/mem_sleep
+
 configure_memory_parameters
 
 # Let kernel know our image version/variant/crm_version
 if [ -f /sys/devices/soc0/select_image ]; then
-	image_version="10:"
-	image_version+=`getprop ro.build.id`
-	image_version+=":"
-	image_version+=`getprop ro.build.version.incremental`
-	image_variant=`getprop ro.product.name`
-	image_variant+="-"
-	image_variant+=`getprop ro.build.type`
-	oem_version=`getprop ro.build.version.codename`
-	echo 10 > /sys/devices/soc0/select_image
-	echo $image_version > /sys/devices/soc0/image_version
-	echo $image_variant > /sys/devices/soc0/image_variant
-	echo $oem_version > /sys/devices/soc0/image_crm_version
+        image_version="10:"
+        image_version+=`getprop ro.build.id`
+        image_version+=":"
+        image_version+=`getprop ro.build.version.incremental`
+        image_variant=`getprop ro.product.name`
+        image_variant+="-"
+        image_variant+=`getprop ro.build.type`
+        oem_version=`getprop ro.build.version.codename`
+        echo 10 > /sys/devices/soc0/select_image
+        echo $image_version > /sys/devices/soc0/image_version
+        echo $image_variant > /sys/devices/soc0/image_variant
+        echo $oem_version > /sys/devices/soc0/image_crm_version
 fi
 
 setprop vendor.post_boot.parsed 1
