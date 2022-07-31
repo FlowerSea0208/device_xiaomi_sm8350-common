@@ -15,14 +15,9 @@
      limitations under the License.
 -->
 <resources>
-    <string-array name="doze_brightness_level">
-        <item>Low brightness</item>
-        <item>High brightness</item>
-        <item>Adaptive brightness</item>
-    </string-array>
-    <string-array name="doze_brightness_level_mode">
-        <item>0</item>
-        <item>1</item>
-        <item>2</item>
-    </string-array>
+    <!-- Ambient settings -->
+    <string name="ambient_enable">Use ambient display</string>
+
+    <string name="doze_brightness_title">Always on brightness</string>
+    <string name="doze_brightness_summary">%s mode is enabled</string>
 </resources>
