@@ -59,4 +59,5 @@
     <string name="dirac_preset_country">乡村</string>
     <string name="dirac_preset_dance">舞蹈</string>
     <string name="dirac_preset_metal">金属</string>
+    <string name="dirac_preset_bass_booster">低音增强器</string>
 </resources>
